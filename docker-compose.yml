@@ -1,3 +1,5 @@
+name: ms-leads
+
 services:
   proxy:
     image: ms-leads/proxy:latest
