@@ -10,10 +10,32 @@
         reverse_proxy gme:8000
     }
 
-    # WAHA - all routes go directly without stripping
-    # Dashboard: /waha/dashboard, API: /waha/api, Swagger: /waha/swagger
-    handle /waha* {
+    # WAHA Dashboard static files - browser loads from /dashboard/*
+    handle /dashboard* {
         reverse_proxy waha:3000
+    }
+
+    # WAHA Swagger
+    handle /swagger* {
+        reverse_proxy waha:3000
+    }
+
+    # WAHA API - browser loads from /api/*
+    handle /api* {
+        reverse_proxy waha:3000
+    }
+
+    # WAHA health check
+    handle /health* {
+        reverse_proxy waha:3000
+    }
+
+    # WAHA entry - redirect to dashboard
+    handle /waha {
+        redir /dashboard/ permanent
+    }
+    handle /waha/ {
+        redir /dashboard/ permanent
     }
 
     # Root - show available routes
@@ -21,8 +43,11 @@
         respond "MS Leads Proxy
 
 Routes:
-  /gme/*   -> Google Maps Extractor (API on /gme)
-  /waha/*  -> WAHA WhatsApp API (dashboard on /waha/dashboard)
+  /gme/*      -> Google Maps Extractor API
+  /waha       -> WAHA Dashboard (redirects to /dashboard)
+  /dashboard  -> WAHA Dashboard
+  /api        -> WAHA API
+  /swagger    -> WAHA Swagger
 " 200
     }
 
