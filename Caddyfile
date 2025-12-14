@@ -4,31 +4,6 @@
 }
 
 :3000 {
-    # GME: /gme/* -> gme:8000
-    handle_path /gme/* {
-        reverse_proxy gme:8000
-    }
-
-    # WAHA: /waha/* -> waha:3000
-    handle_path /waha/* {
-        reverse_proxy waha:3000
-    }
-
-    # Chatwoot: /chat/* -> chatwoot-web:4000
-    handle_path /chat/* {
-        reverse_proxy chatwoot-web:4000
-    }
-
-    # Omkar.cloud proxy: /omkar/* -> external site
-    handle_path /omkar/* {
-        reverse_proxy https://www.omkar.cloud {
-            header_up Host {upstream_hostport}
-            header_up X-Real-IP {remote_host}
-        }
-    }
-
-    # Default: GME dashboard
-    handle {
-        reverse_proxy gme:8000
-    }
+    # GME Dashboard and API
+    reverse_proxy gme:8000
 }
