@@ -4,30 +4,13 @@
 }
 
 :3000 {
-    # GME - Google Maps Extractor
-    handle /gme* {
-        uri strip_prefix /gme
+    # GME: /gme/* -> gme:8000
+    handle_path /gme/* {
         reverse_proxy gme:8000
     }
 
-    # WAHA - simple proxy with prefix strip
-    handle /waha* {
-        uri strip_prefix /waha
-        reverse_proxy waha:3000
-    }
-
-    # Root - show available routes
-    handle / {
-        respond "MS Leads Proxy
-
-Routes:
-  /gme/*   -> Google Maps Extractor API
-  /waha/*  -> WAHA WhatsApp API
-" 200
-    }
-
-    # Fallback
+    # WAHA: всё остальное -> waha:3000
     handle {
-        respond "Not Found" 404
+        reverse_proxy waha:3000
     }
 }
