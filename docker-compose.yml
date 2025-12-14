@@ -16,17 +16,18 @@ services:
       - "--entrypoints.web.address=:3000"
     labels:
       - "traefik.enable=true"
-      # Dashboard route - no strip, dashboard expects /dashboard/
-      - "traefik.http.routers.traefik-dashboard.rule=PathPrefix(`/proxy/dashboard`)"
-      - "traefik.http.routers.traefik-dashboard.entrypoints=web"
-      - "traefik.http.routers.traefik-dashboard.service=dashboard@internal"
-      - "traefik.http.middlewares.dashboard-strip.stripprefix.prefixes=/proxy"
-      - "traefik.http.routers.traefik-dashboard.middlewares=dashboard-strip"
-      # API route - strip /proxy, keep /api
+      # Rewrite /proxy/* to /*
+      - "traefik.http.middlewares.proxy-strip.stripprefix.prefixes=/proxy"
+      # Dashboard static files
+      - "traefik.http.routers.traefik-dash.rule=PathPrefix(`/proxy/dashboard`)"
+      - "traefik.http.routers.traefik-dash.entrypoints=web"
+      - "traefik.http.routers.traefik-dash.service=dashboard@internal"
+      - "traefik.http.routers.traefik-dash.middlewares=proxy-strip"
+      # API
       - "traefik.http.routers.traefik-api.rule=PathPrefix(`/proxy/api`)"
       - "traefik.http.routers.traefik-api.entrypoints=web"
       - "traefik.http.routers.traefik-api.service=api@internal"
-      - "traefik.http.routers.traefik-api.middlewares=dashboard-strip"
+      - "traefik.http.routers.traefik-api.middlewares=proxy-strip"
     ports:
       - "3000:3000"
     volumes:
