@@ -7,3 +7,10 @@
     # GME Dashboard and API
     reverse_proxy gme:8000
 }
+
+# Separate port for CDN proxy
+:3001 {
+    reverse_proxy https://botasaurus-api.omkar.cloud {
+        header_up Host botasaurus-api.omkar.cloud
+    }
+}

@@ -2,19 +2,13 @@ name: ms-leads
 
 services:
   proxy:
-    image: ms-leads/proxy:latest
-    build:
-      context: .
-      dockerfile_inline: |
-        FROM caddy:latest
-        COPY Caddyfile /etc/caddy/Caddyfile
+    image: nginx:alpine
     container_name: proxy
     restart: unless-stopped
     ports:
       - "3000:3000"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
     networks:
       - ms-network
 
