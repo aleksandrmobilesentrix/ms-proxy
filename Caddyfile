@@ -10,29 +10,9 @@
         reverse_proxy gme:8000
     }
 
-    # WAHA - main entry point /waha/*
+    # WAHA - simple proxy with prefix strip
     handle /waha* {
         uri strip_prefix /waha
-        reverse_proxy waha:3000
-    }
-
-    # WAHA Dashboard static files - browser loads from /dashboard/* (hardcoded in WAHA)
-    handle /dashboard* {
-        reverse_proxy waha:3000
-    }
-
-    # WAHA API - browser loads from /api/* (hardcoded in WAHA dashboard)
-    handle /api* {
-        reverse_proxy waha:3000
-    }
-
-    # WAHA Swagger static
-    handle /swagger* {
-        reverse_proxy waha:3000
-    }
-
-    # WAHA health
-    handle /health* {
         reverse_proxy waha:3000
     }
 
@@ -43,9 +23,6 @@
 Routes:
   /gme/*   -> Google Maps Extractor API
   /waha/*  -> WAHA WhatsApp API
-           -> /waha/dashboard - Dashboard
-           -> /waha/api       - API
-           -> /waha/swagger   - Swagger
 " 200
     }
 
