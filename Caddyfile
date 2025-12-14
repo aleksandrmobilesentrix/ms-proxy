@@ -5,12 +5,14 @@
 
 :3000 {
     # GME - Google Maps Extractor
-    handle_path /gme/* {
+    handle /gme* {
+        uri strip_prefix /gme
         reverse_proxy gme:8000
     }
 
     # WAHA - WhatsApp API
-    handle_path /waha/* {
+    handle /waha* {
+        uri strip_prefix /waha
         reverse_proxy waha:3000
     }
 
@@ -19,8 +21,8 @@
         respond "MS Leads Proxy
 
 Routes:
-  /gme/*   -> Google Maps Extractor
-  /waha/*  -> WAHA WhatsApp API
+  /gme   -> Google Maps Extractor
+  /waha  -> WAHA WhatsApp API
 " 200
     }
 
