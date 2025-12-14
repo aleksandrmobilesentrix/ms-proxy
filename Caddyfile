@@ -10,7 +10,17 @@
         reverse_proxy gme:8000
     }
 
-    # WAHA - WhatsApp API
+    # WAHA Dashboard static files (loaded from /dashboard/* by browser)
+    handle /dashboard* {
+        reverse_proxy waha:3000
+    }
+
+    # WAHA API routes (loaded from /api/* by dashboard)
+    handle /api* {
+        reverse_proxy waha:3000
+    }
+
+    # WAHA - WhatsApp API entry point
     handle /waha* {
         uri strip_prefix /waha
         reverse_proxy waha:3000
