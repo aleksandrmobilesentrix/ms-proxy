@@ -16,18 +16,17 @@ services:
       - "--entrypoints.web.address=:3000"
     labels:
       - "traefik.enable=true"
-      # Rewrite /proxy/* to /*
+      # Strip /proxy prefix
       - "traefik.http.middlewares.proxy-strip.stripprefix.prefixes=/proxy"
-      # Dashboard static files
-      - "traefik.http.routers.traefik-dash.rule=PathPrefix(`/proxy/dashboard`)"
+      # Replace /proxy/dashboard with /dashboard (для статики)
+      - "traefik.http.middlewares.dash-replace.replacepathregex.regex=^/proxy/(.*)"
+      - "traefik.http.middlewares.dash-replace.replacepathregex.replacement=/$$1"
+      # Dashboard - serve static files
+      - "traefik.http.routers.traefik-dash.rule=PathPrefix(`/proxy`)"
       - "traefik.http.routers.traefik-dash.entrypoints=web"
-      - "traefik.http.routers.traefik-dash.service=dashboard@internal"
+      - "traefik.http.routers.traefik-dash.service=api@internal"
       - "traefik.http.routers.traefik-dash.middlewares=proxy-strip"
-      # API
-      - "traefik.http.routers.traefik-api.rule=PathPrefix(`/proxy/api`)"
-      - "traefik.http.routers.traefik-api.entrypoints=web"
-      - "traefik.http.routers.traefik-api.service=api@internal"
-      - "traefik.http.routers.traefik-api.middlewares=proxy-strip"
+      - "traefik.http.routers.traefik-dash.priority=1"
     ports:
       - "3000:3000"
     volumes:
