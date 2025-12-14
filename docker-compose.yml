@@ -4,34 +4,14 @@ services:
     build:
       context: .
       dockerfile_inline: |
-        FROM traefik:latest
+        FROM caddy:latest
+        COPY Caddyfile /etc/caddy/Caddyfile
     container_name: proxy
     restart: unless-stopped
-    command:
-      - "--api.insecure=true"
-      - "--api.dashboard=true"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--providers.docker.network=ms-network"
-      - "--entrypoints.web.address=:3000"
-    labels:
-      - "traefik.enable=true"
-      # Strip /proxy prefix
-      - "traefik.http.middlewares.proxy-strip.stripprefix.prefixes=/proxy"
-      # /proxy/* -> api@internal (dashboard + api)
-      - "traefik.http.routers.traefik-proxy.rule=PathPrefix(`/proxy`)"
-      - "traefik.http.routers.traefik-proxy.entrypoints=web"
-      - "traefik.http.routers.traefik-proxy.service=api@internal"
-      - "traefik.http.routers.traefik-proxy.middlewares=proxy-strip"
-      - "traefik.http.routers.traefik-proxy.priority=1"
-      # /api/* -> api@internal (для dashboard JS)
-      - "traefik.http.routers.traefik-api.rule=PathPrefix(`/api`)"
-      - "traefik.http.routers.traefik-api.entrypoints=web"
-      - "traefik.http.routers.traefik-api.service=api@internal"
-      - "traefik.http.routers.traefik-api.priority=100"
     ports:
       - "3000:3000"
     volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - ms-network

@@ -1,0 +1,31 @@
+{
+    admin off
+    auto_https off
+}
+
+:3000 {
+    # GME - Google Maps Extractor
+    handle_path /gme/* {
+        reverse_proxy gme:8000
+    }
+
+    # WAHA - WhatsApp API
+    handle_path /waha/* {
+        reverse_proxy waha:3000
+    }
+
+    # Root - show available routes
+    handle / {
+        respond "MS Leads Proxy
+
+Routes:
+  /gme/*   -> Google Maps Extractor
+  /waha/*  -> WAHA WhatsApp API
+" 200
+    }
+
+    # Fallback
+    handle {
+        respond "Not Found" 404
+    }
+}
