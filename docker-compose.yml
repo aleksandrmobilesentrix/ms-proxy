@@ -14,9 +14,21 @@ services:
       - "--providers.docker.exposedbydefault=false"
       - "--providers.docker.network=ms-network"
       - "--entrypoints.web.address=:3000"
+    labels:
+      - "traefik.enable=true"
+      # Dashboard route - no strip, dashboard expects /dashboard/
+      - "traefik.http.routers.traefik-dashboard.rule=PathPrefix(`/proxy/dashboard`)"
+      - "traefik.http.routers.traefik-dashboard.entrypoints=web"
+      - "traefik.http.routers.traefik-dashboard.service=dashboard@internal"
+      - "traefik.http.middlewares.dashboard-strip.stripprefix.prefixes=/proxy"
+      - "traefik.http.routers.traefik-dashboard.middlewares=dashboard-strip"
+      # API route - strip /proxy, keep /api
+      - "traefik.http.routers.traefik-api.rule=PathPrefix(`/proxy/api`)"
+      - "traefik.http.routers.traefik-api.entrypoints=web"
+      - "traefik.http.routers.traefik-api.service=api@internal"
+      - "traefik.http.routers.traefik-api.middlewares=dashboard-strip"
     ports:
       - "3000:3000"
-      - "8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
