@@ -18,15 +18,17 @@ services:
       - "traefik.enable=true"
       # Strip /proxy prefix
       - "traefik.http.middlewares.proxy-strip.stripprefix.prefixes=/proxy"
-      # Replace /proxy/dashboard with /dashboard (для статики)
-      - "traefik.http.middlewares.dash-replace.replacepathregex.regex=^/proxy/(.*)"
-      - "traefik.http.middlewares.dash-replace.replacepathregex.replacement=/$$1"
-      # Dashboard - serve static files
-      - "traefik.http.routers.traefik-dash.rule=PathPrefix(`/proxy`)"
-      - "traefik.http.routers.traefik-dash.entrypoints=web"
-      - "traefik.http.routers.traefik-dash.service=api@internal"
-      - "traefik.http.routers.traefik-dash.middlewares=proxy-strip"
-      - "traefik.http.routers.traefik-dash.priority=1"
+      # /proxy/* -> api@internal (dashboard + api)
+      - "traefik.http.routers.traefik-proxy.rule=PathPrefix(`/proxy`)"
+      - "traefik.http.routers.traefik-proxy.entrypoints=web"
+      - "traefik.http.routers.traefik-proxy.service=api@internal"
+      - "traefik.http.routers.traefik-proxy.middlewares=proxy-strip"
+      - "traefik.http.routers.traefik-proxy.priority=1"
+      # /api/* -> api@internal (для dashboard JS)
+      - "traefik.http.routers.traefik-api.rule=PathPrefix(`/api`)"
+      - "traefik.http.routers.traefik-api.entrypoints=web"
+      - "traefik.http.routers.traefik-api.service=api@internal"
+      - "traefik.http.routers.traefik-api.priority=100"
     ports:
       - "3000:3000"
     volumes:
