@@ -4,10 +4,10 @@ services:
     build:
       context: .
       dockerfile_inline: |
-        FROM traefik:v3.2
+        FROM traefik:v2.11
     container_name: proxy
-    restart: unless-stopped
-    command:
+    restart: unless-stopped    environment:
+      - DOCKER_API_VERSION=1.52    command:
       - "--api.insecure=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
