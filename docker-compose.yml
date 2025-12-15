@@ -3,7 +3,7 @@ name: ms-leads
 services:
   proxy:
     image: nginx:alpine
-    container_name: proxy
+    container_name: ms-proxy
     restart: unless-stopped
     ports:
       - "3000:3000"
