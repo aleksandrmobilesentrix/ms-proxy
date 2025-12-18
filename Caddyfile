@@ -1,24 +1,31 @@
-# Caddy configuration with automatic HTTPS
+# Caddy configuration - SSL handled by Cloudflare
 {
-    email admin@vasilisa.at
+    auto_https off
 }
 
 # Twenty CRM
-vasilisa.at {
-    reverse_proxy ms-twenty-server:3000
-}
+:80 {
+    @twenty host vasilisa.at
+    handle @twenty {
+        reverse_proxy ms-twenty-server:3000
+    }
 
-# Chatwoot
-chat.vasilisa.at {
-    reverse_proxy ms-chatwoot-web:4000
-}
+    @chatwoot host chat.vasilisa.at
+    handle @chatwoot {
+        reverse_proxy ms-chatwoot-web:4000
+    }
 
-# GME
-gme.vasilisa.at {
-    reverse_proxy ms-gme:8000
-}
+    @gme host gme.vasilisa.at
+    handle @gme {
+        reverse_proxy ms-gme:8000
+    }
 
-# WAHA
-waha.vasilisa.at {
-    reverse_proxy ms-waha:3000
+    @waha host waha.vasilisa.at
+    handle @waha {
+        reverse_proxy ms-waha:3000
+    }
+
+    handle {
+        respond "Not Found" 404
+    }
 }
