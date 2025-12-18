@@ -1,15 +1,15 @@
 #!/bin/bash
-# Auto-deploy script for ms-proxy (nginx)
+# Auto-deploy script for ms-proxy (Caddy)
 # Called by cron when git changes detected
 
 set -e
 
 echo "$(date): Starting proxy deploy..."
 
-# Reload nginx config (send SIGHUP to reload config)
-docker compose exec -T ms-proxy nginx -s reload 2>/dev/null || {
-    echo "$(date): nginx reload failed, restarting container..."
-    docker compose restart ms-proxy
+# Reload Caddy config
+docker compose exec -T proxy caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || {
+    echo "$(date): Caddy reload failed, restarting container..."
+    docker compose restart proxy
 }
 
 echo "$(date): Proxy deploy completed!"

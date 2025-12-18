@@ -1,6 +1,6 @@
-# MS Proxy - Traefik Reverse Proxy
+# MS Proxy - Caddy Reverse Proxy
 
-Traefik reverse proxy for routing traffic to MS services.
+Simple Caddy reverse proxy with automatic HTTPS via Let's Encrypt.
 
 ## Quick Start
 
@@ -8,17 +8,21 @@ Traefik reverse proxy for routing traffic to MS services.
 make up
 ```
 
-## Routes
+## Domains
 
-| Path | Service |
-|------|---------|
-| `/waha/*` | WAHA WhatsApp API |
-| `/gme/*` | Google Maps Extractor |
+| Domain | Service |
+|--------|--------|
+| `vasilisa.at` | Twenty CRM |
+| `chat.vasilisa.at` | Chatwoot |
+| `gme.vasilisa.at` | GME |
+| `waha.vasilisa.at` | WAHA |
 
-## Dashboard
+## Deploy
 
-Traefik dashboard available at `http://localhost:8080`
+```bash
+./deploy.sh
+```
 
 ## Network
 
-All services connect via `ms-network` Docker network.
+All services use `msnetwork` Docker network.

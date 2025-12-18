@@ -1,16 +1,24 @@
+# Caddy configuration with automatic HTTPS
 {
-    admin off
-    auto_https off
+    email admin@vasilisa.at
 }
 
-:3000 {
-    # GME Dashboard and API
-    reverse_proxy gme:8000
+# Twenty CRM
+vasilisa.at {
+    reverse_proxy ms-twenty-server:3000
 }
 
-# Separate port for CDN proxy
-:3001 {
-    reverse_proxy https://botasaurus-api.omkar.cloud {
-        header_up Host botasaurus-api.omkar.cloud
-    }
+# Chatwoot
+chat.vasilisa.at {
+    reverse_proxy ms-chatwoot-web:4000
+}
+
+# GME
+gme.vasilisa.at {
+    reverse_proxy ms-gme:8000
+}
+
+# WAHA
+waha.vasilisa.at {
+    reverse_proxy ms-waha:3000
 }
