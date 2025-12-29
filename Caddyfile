@@ -3,11 +3,11 @@
     email admin@vasilisa.at
 }
 
-# Global compression snippet
+# Global compression snippet (gzip level 5 - best speed/ratio balance)
 (compression) {
     encode {
-        gzip 9
-        minimum_length 1024
+        gzip 5
+        minimum_length 256
     }
 }
 
