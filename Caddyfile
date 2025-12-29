@@ -3,9 +3,62 @@
     email admin@vasilisa.at
 }
 
-# Twenty CRM
+# Global compression snippet
+(compression) {
+    encode {
+        gzip 9
+        minimum_length 1024
+    }
+}
+
+# Twenty CRM (Production - Docker)
 vasilisa.at {
+    import compression
     reverse_proxy ms-twenty-server:3000
+}
+
+# Twenty CRM (Development - Native)
+dev.vasilisa.at {
+    import compression
+
+    # Backend API endpoints
+    handle /rest/* {
+        reverse_proxy 172.18.0.1:3000
+    }
+    handle /graphql {
+        reverse_proxy 172.18.0.1:3000
+    }
+    handle /metadata {
+        reverse_proxy 172.18.0.1:3000
+    }
+    handle /files/* {
+        reverse_proxy 172.18.0.1:3000
+    }
+    handle /auth/* {
+        reverse_proxy 172.18.0.1:3000
+    }
+    handle /healthz {
+        reverse_proxy 172.18.0.1:3000
+    }
+    handle /client-config {
+        reverse_proxy 172.18.0.1:3000
+    }
+    handle /webhooks/* {
+        reverse_proxy 172.18.0.1:3000
+    }
+    handle /open-api/* {
+        reverse_proxy 172.18.0.1:3000
+    }
+    handle /mcp/* {
+        reverse_proxy 172.18.0.1:3000
+    }
+    handle /s/* {
+        reverse_proxy 172.18.0.1:3000
+    }
+    # Frontend (Vite dev server) - catch all remaining
+    handle {
+        reverse_proxy 172.18.0.1:3001
+    }
 }
 
 # Chatwoot
