@@ -1,0 +1,641 @@
+# Caddy configuration for ms-dev server (157.90.241.222)
+{
+	servers {
+		# Cloudflare IP ranges — so Caddy reads real client IP from headers
+		# Source: https://www.cloudflare.com/ips/
+		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+		client_ip_headers CF-Connecting-IP X-Forwarded-For
+	}
+}
+
+(compression) {
+	encode {
+		gzip 5
+		minimum_length 256
+	}
+}
+
+# Blue-green upstream for zero-downtime Chatwoot deploys
+# first: all traffic goes to blue; green is hot standby.
+# Rolling restart: green first (0 connections), then blue.
+# Passive health checks — no active probing (32 imports would flood server).
+# lb_try_duration: if blue fails, Caddy retries on green in the SAME request.
+# When blue goes down, the just-started green takes all traffic and websocket
+# reconnects at once; for a few seconds its dials time out and it gets benched
+# too. 30s of retrying lets those requests wait for an upstream instead of
+# failing ("no upstreams available" for ~10s on 2026-10-10 and 2026-10-12).
+(chatwoot_blue_green) {
+	to ms-chatwoot-prod-blue:3000 ms-chatwoot-prod-green:3000
+	# A corporate proxy (Blue Coat) adds Client-IP with a private address; Rails then
+	# raises IpSpoofAttackError because it is not in X-Forwarded-For (2026-10-19, widget).
+	header_up -Client-IP
+	lb_policy first
+	lb_try_duration 30s
+	lb_try_interval 250ms
+	fail_duration 5s
+	max_fails 2
+}
+
+# ==============================================================================
+# TLS certificates (Cloudflare Origin CA)
+# ==============================================================================
+
+# *.dev.mobilesentrix.com
+(tls_dev) {
+	tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
+}
+
+# chat.mobilesentrix.com + 20.mobilesentrix.com
+(tls_com) {
+	tls /etc/caddy/certs/chat-20-com.cert /etc/caddy/certs/chat-20-com-key.pem
+}
+
+# chat.mobilesentrix.eu + 20.mobilesentrix.eu
+(tls_eu) {
+	tls /etc/caddy/certs/chat-20-eu.cert /etc/caddy/certs/chat-20-eu-key.pem
+}
+
+# chat.mobilesentrix.ca + 20.mobilesentrix.ca
+(tls_ca) {
+	tls /etc/caddy/certs/20-chat-ca.cert /etc/caddy/certs/20-chat-ca-key.pem
+}
+
+# chat.mobilesentrix.co.uk + 20.mobilesentrix.co.uk
+(tls_couk) {
+	tls /etc/caddy/certs/20-chat-co.uk.cert /etc/caddy/certs/20-chat-co.uk-key.pem
+}
+
+# Widget paths - CORS + override X-Frame-Options
+(chatwoot_widget) {
+	header {
+		Access-Control-Allow-Origin *
+		Access-Control-Allow-Methods "GET, POST, OPTIONS"
+		Access-Control-Allow-Headers "Content-Type, Authorization"
+		Access-Control-Max-Age 7200
+	}
+}
+
+# Cacheable widget/asset endpoints — reduces server load via browser + CDN caching
+(chatwoot_prod_cache) {
+	# Widget API: News feed — 1 hour (RSS changes infrequently)
+	@widget_news path /api/v1/widget/news_feed*
+	handle @widget_news {
+		import chatwoot_widget
+		reverse_proxy {
+			import chatwoot_blue_green
+			header_down Cache-Control "public, max-age=3600"
+		}
+	}
+
+	# Widget API: Campaigns — 1 hour
+	@widget_campaigns path /api/v1/widget/campaigns*
+	handle @widget_campaigns {
+		import chatwoot_widget
+		reverse_proxy {
+			import chatwoot_blue_green
+			header_down Cache-Control "public, max-age=3600"
+		}
+	}
+
+	# Help center articles — 1 hour
+	@hc_articles path_regexp ^/hc/.+/articles\.json$
+	handle @hc_articles {
+		header -Set-Cookie
+		header CDN-Cache-Control "public, max-age=3600"
+		reverse_proxy {
+			import chatwoot_blue_green
+			header_down Cache-Control "public, max-age=3600"
+		}
+	}
+
+	# Active Storage avatars/logos — CORS for cross-domain widget avatars
+	# CDN-Cache-Control: no-store prevents Cloudflare from caching redirects
+	# (signed URLs expire, caching them at CDN is incorrect anyway)
+	@active_storage path /rails/active_storage/*
+	handle @active_storage {
+		header {
+			Access-Control-Allow-Origin *
+			Access-Control-Allow-Methods "GET, OPTIONS"
+			Access-Control-Max-Age 86400
+			CDN-Cache-Control "no-store"
+			Vary Origin
+			-X-Frame-Options
+		}
+		reverse_proxy {
+			import chatwoot_blue_green
+			header_down -X-Frame-Options
+		}
+	}
+}
+
+# Agentation feedback widget — local ms-agentation container on this host.
+# Self-contained: no dependency on ms-my. Same-origin /agentation/* from
+# the browser's perspective; container reachable on docker ms-network.
+(agentation_proxy) {
+	handle_path /agentation/* {
+		reverse_proxy ms-agentation:4747
+	}
+	# ClickUp bridge — receives annotation payloads from the widget and
+	# creates ClickUp tasks. Same-origin so no CORS dance.
+	handle_path /agentation-bridge/* {
+		reverse_proxy ms-agentation-clickup-bridge:3000
+	}
+}
+
+# ==============================================================================
+# CHATWOOT DEV (port 4000 + Vite 3036)
+# ==============================================================================
+
+chat.dev.mobilesentrix.com {
+	import tls_dev
+	import compression
+	import agentation_proxy
+	# SDK loader - short cache (1 hour) to allow updates
+	@sdk_loader path /packs/js/sdk.js
+	handle @sdk_loader {
+		import chatwoot_widget
+		reverse_proxy 172.18.0.1:4000 {
+			header_down Cache-Control "public, max-age=3600, must-revalidate"
+		}
+	}
+
+	# Widget paths
+	@widget path /widget /widget/* /ms_widget /ms_widget/* /packs/* /api/v1/widget/*
+	handle @widget {
+		import chatwoot_widget
+		reverse_proxy 172.18.0.1:4000
+	}
+
+	handle /vite-dev/* {
+		reverse_proxy 172.18.0.1:3036
+	}
+
+	handle {
+		reverse_proxy 172.18.0.1:4000
+	}
+}
+
+# ==============================================================================
+# CHATWOOT PRODUCTION (Docker, blue-green: ports 4003/4004)
+# ==============================================================================
+
+chat.mobilesentrix.com {
+	import tls_com
+	import compression
+	import chatwoot_prod_cache
+	import agentation_proxy
+
+	@sdk_loader path /packs/js/sdk.js
+	handle @sdk_loader {
+		import chatwoot_widget
+		reverse_proxy {
+			import chatwoot_blue_green
+			header_down Cache-Control "public, max-age=3600, must-revalidate"
+		}
+	}
+
+	@widget path /widget /widget/* /ms_widget /ms_widget/* /packs/* /api/v1/widget/*
+	handle @widget {
+		import chatwoot_widget
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+
+	handle {
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+}
+
+chat.mobilesentrix.eu {
+	import tls_eu
+	import compression
+	import chatwoot_prod_cache
+	import agentation_proxy
+
+	@sdk_loader path /packs/js/sdk.js
+	handle @sdk_loader {
+		import chatwoot_widget
+		reverse_proxy {
+			import chatwoot_blue_green
+			header_down Cache-Control "public, max-age=3600, must-revalidate"
+		}
+	}
+
+	@widget path /widget /widget/* /ms_widget /ms_widget/* /packs/* /api/v1/widget/*
+	handle @widget {
+		import chatwoot_widget
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+
+	handle {
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+}
+
+chat.mobilesentrix.ca {
+	import tls_ca
+	import compression
+	import chatwoot_prod_cache
+
+	@sdk_loader path /packs/js/sdk.js
+	handle @sdk_loader {
+		import chatwoot_widget
+		reverse_proxy {
+			import chatwoot_blue_green
+			header_down Cache-Control "public, max-age=3600, must-revalidate"
+		}
+	}
+
+	@widget path /widget /widget/* /ms_widget /ms_widget/* /packs/* /api/v1/widget/*
+	handle @widget {
+		import chatwoot_widget
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+
+	handle {
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+}
+
+chat.mobilesentrix.co.uk {
+	import tls_couk
+	import compression
+	import chatwoot_prod_cache
+
+	@sdk_loader path /packs/js/sdk.js
+	handle @sdk_loader {
+		import chatwoot_widget
+		reverse_proxy {
+			import chatwoot_blue_green
+			header_down Cache-Control "public, max-age=3600, must-revalidate"
+		}
+	}
+
+	@widget path /widget /widget/* /ms_widget /ms_widget/* /packs/* /api/v1/widget/*
+	handle @widget {
+		import chatwoot_widget
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+
+	handle {
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+}
+
+# ==============================================================================
+# TWENTY CRM DEV (port 3000, chatwoot-embed via dev port 4000)
+# ==============================================================================
+
+20.dev.mobilesentrix.com {
+	import tls_dev
+	import compression
+
+	# Chatwoot static assets — rewrite to /chatwoot-embed/ prefix so the
+	# existing handle_path rule forwards them to Chatwoot Rails.
+	@chatwoot_assets path /dashboard/images/* /dashboard/audio/*
+	rewrite @chatwoot_assets /chatwoot-embed{uri}
+
+	# Rails public/ assets (profile hotkeys, captain, bot avatar)
+	handle /assets/images/* {
+		reverse_proxy 172.18.0.1:4000
+	}
+
+	# Chatwoot embeddable bundle — static JS/CSS served by Rails
+	handle_path /chatwoot-embed/* {
+		reverse_proxy 172.18.0.1:4000
+	}
+
+	# Chatwoot API + ActionCable WebSocket — proxied to Rails
+	handle_path /chatwoot-api/* {
+		reverse_proxy 172.18.0.1:4000
+	}
+
+	# Member integration endpoints
+	handle /member-chatwoot/* {
+		reverse_proxy 172.18.0.1:3000
+	}
+
+	handle /member-whatsapp/* {
+		reverse_proxy 172.18.0.1:3000
+	}
+
+	# GraphQL with SSE support
+	handle /graphql {
+		reverse_proxy 172.18.0.1:3000 {
+			flush_interval -1
+		}
+	}
+
+	# Everything else — Twenty server (serves both API and frontend in production)
+	handle {
+		reverse_proxy 172.18.0.1:3000
+	}
+}
+
+# ==============================================================================
+# TWENTY CRM PRODUCTION (Docker: ms-twenty-prod-server, Chatwoot: blue-green)
+# ==============================================================================
+
+20.mobilesentrix.com {
+	import tls_com
+	import compression
+
+	@chatwoot_assets path /dashboard/images/* /dashboard/audio/*
+	rewrite @chatwoot_assets /chatwoot-embed{uri}
+
+	handle /assets/images/* {
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+
+	handle /fasttext/* {
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+
+	handle_path /chatwoot-embed/* {
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+
+	handle_path /chatwoot-api/* {
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+
+	handle /member-chatwoot/* {
+		reverse_proxy ms-twenty-prod-server:3000
+	}
+
+	handle /member-whatsapp/* {
+		reverse_proxy ms-twenty-prod-server:3000
+	}
+
+	handle /graphql {
+		reverse_proxy ms-twenty-prod-server:3000 {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		reverse_proxy ms-twenty-prod-server:3000
+	}
+}
+
+20.mobilesentrix.eu {
+	import tls_eu
+	import compression
+
+	@chatwoot_assets path /dashboard/images/* /dashboard/audio/*
+	rewrite @chatwoot_assets /chatwoot-embed{uri}
+
+	handle /assets/images/* {
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+
+	handle /fasttext/* {
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+
+	handle_path /chatwoot-embed/* {
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+
+	handle_path /chatwoot-api/* {
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+
+	handle /member-chatwoot/* {
+		reverse_proxy ms-twenty-prod-server:3000
+	}
+
+	handle /member-whatsapp/* {
+		reverse_proxy ms-twenty-prod-server:3000
+	}
+
+	handle /graphql {
+		reverse_proxy ms-twenty-prod-server:3000 {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		reverse_proxy ms-twenty-prod-server:3000
+	}
+}
+
+20.mobilesentrix.ca {
+	import tls_ca
+	import compression
+
+	@chatwoot_assets path /dashboard/images/* /dashboard/audio/*
+	rewrite @chatwoot_assets /chatwoot-embed{uri}
+
+	handle /assets/images/* {
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+
+	handle /fasttext/* {
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+
+	handle_path /chatwoot-embed/* {
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+
+	handle_path /chatwoot-api/* {
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+
+	handle /member-chatwoot/* {
+		reverse_proxy ms-twenty-prod-server:3000
+	}
+
+	handle /member-whatsapp/* {
+		reverse_proxy ms-twenty-prod-server:3000
+	}
+
+	handle /graphql {
+		reverse_proxy ms-twenty-prod-server:3000 {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		reverse_proxy ms-twenty-prod-server:3000
+	}
+}
+
+20.mobilesentrix.co.uk {
+	import tls_couk
+	import compression
+
+	@chatwoot_assets path /dashboard/images/* /dashboard/audio/*
+	rewrite @chatwoot_assets /chatwoot-embed{uri}
+
+	handle /assets/images/* {
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+
+	handle /fasttext/* {
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+
+	handle_path /chatwoot-embed/* {
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+
+	handle_path /chatwoot-api/* {
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+
+	handle /member-chatwoot/* {
+		reverse_proxy ms-twenty-prod-server:3000
+	}
+
+	handle /member-whatsapp/* {
+		reverse_proxy ms-twenty-prod-server:3000
+	}
+
+	handle /graphql {
+		reverse_proxy ms-twenty-prod-server:3000 {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		reverse_proxy ms-twenty-prod-server:3000
+	}
+}
+
+
+# ------------------------------------------------------------------------------
+# Twenty CRM PRODUCTION — backup domain (20.ms.vasilisa.at)
+# Same upstream as 20.mobilesentrix.com. Exists so the CRM stays reachable when
+# the mobilesentrix.com zone / Cloudflare edge is having problems, so this host
+# is deliberately DNS-only in Cloudflare and uses an automatic Let's Encrypt
+# cert instead of a Cloudflare Origin CA cert.
+# ------------------------------------------------------------------------------
+
+20.ms.vasilisa.at {
+	import compression
+
+	@chatwoot_assets path /dashboard/images/* /dashboard/audio/*
+	rewrite @chatwoot_assets /chatwoot-embed{uri}
+
+	handle /assets/images/* {
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+
+	handle /fasttext/* {
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+
+	handle_path /chatwoot-embed/* {
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+
+	handle_path /chatwoot-api/* {
+		reverse_proxy {
+			import chatwoot_blue_green
+		}
+	}
+
+	handle /member-chatwoot/* {
+		reverse_proxy ms-twenty-prod-server:3000
+	}
+
+	handle /member-whatsapp/* {
+		reverse_proxy ms-twenty-prod-server:3000
+	}
+
+	handle /graphql {
+		reverse_proxy ms-twenty-prod-server:3000 {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		reverse_proxy ms-twenty-prod-server:3000
+	}
+}
+
+# ==============================================================================
+# WAHA (WhatsApp)
+# ==============================================================================
+
+waha.dev.mobilesentrix.com {
+	import tls_dev
+	import compression
+	reverse_proxy ms-waha:3000
+}
+
+waha-dev.vasilisa.at {
+	import compression
+	reverse_proxy ms-waha:3000
+}
+
+waha-ms.vasilisa.at {
+	import compression
+	reverse_proxy ms-waha-ms:3000
+}
+
+# Internal entry to Chatwoot for services on ms-network (WAHA, Twenty prod):
+# http://ms-proxy:8088 goes through the same blue/green pair with 30 s of retries,
+# so a Chatwoot deploy no longer drops their requests (they used to call
+# ms-chatwoot-prod-blue:3000 directly and lost WhatsApp messages while it restarted).
+# Not published on the host: only containers on ms-network can reach it.
+http://:8088 {
+	reverse_proxy {
+		import chatwoot_blue_green
+	}
+}
